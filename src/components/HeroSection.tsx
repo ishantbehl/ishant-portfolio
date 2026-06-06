@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Mail, Download, Volume2, VolumeX } from 'lucide-react';
 import FadeIn from './FadeIn';
 import ContactButton from './ContactButton';
@@ -8,78 +8,43 @@ import { profile } from '../data/profile';
 const HeroSection = () => {
   const sectionRef = useRef<HTMLElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isMuted, setIsMuted] = useState(true);
-  const [soundLocked, setSoundLocked] = useState(true);
+  const [muted, setMuted] = useState(true);
+  const [showSoundHint, setShowSoundHint] = useState(true);
 
-  const enableSound = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    video.muted = false;
-    video.volume = 1;
-    setIsMuted(false);
-    setSoundLocked(false);
-    video.play().catch(() => {});
+  // Auto-hide "Tap for sound" hint after 5 seconds
+  useEffect(() => {
+    const t = setTimeout(() => setShowSoundHint(false), 5000);
+    return () => clearTimeout(t);
   }, []);
 
-  const toggleSound = () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (isMuted) {
-      enableSound();
-      return;
-    }
-
-    video.muted = true;
-    setIsMuted(true);
-  };
-
-  // Try intro with sound first; fall back to muted autoplay if the browser blocks it.
+  // Auto-mute video when scrolling past hero
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    video.volume = 1;
-
-    const startPlayback = async () => {
-      video.muted = false;
-      try {
-        await video.play();
-        setIsMuted(false);
-        setSoundLocked(false);
-      } catch {
-        video.muted = true;
-        setIsMuted(true);
-        setSoundLocked(true);
-        try {
-          await video.play();
-        } catch {
-          // ignore — user can tap the overlay
-        }
-      }
-    };
-
-    void startPlayback();
-  }, []);
-
-  // Any interaction on the hero unlocks intro audio (required by browser autoplay policy).
-  useEffect(() => {
-    if (!soundLocked) return;
-
     const section = sectionRef.current;
     if (!section) return;
 
-    const unlock = () => enableSound();
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) {
+          const video = videoRef.current;
+          if (video && !video.muted) {
+            video.muted = true;
+            setMuted(true);
+          }
+        }
+      },
+      { threshold: 0, rootMargin: '-50% 0px 0px 0px' }
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
 
-    section.addEventListener('pointerdown', unlock, { once: true });
-    section.addEventListener('keydown', unlock, { once: true });
-
-    return () => {
-      section.removeEventListener('pointerdown', unlock);
-      section.removeEventListener('keydown', unlock);
-    };
-  }, [soundLocked, enableSound]);
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setMuted(video.muted);
+    setShowSoundHint(false);
+  };
 
   // Snap-scroll: one wheel tick / keypress while at the top jumps to Summary.
   useEffect(() => {
@@ -123,7 +88,7 @@ const HeroSection = () => {
       <video
         ref={videoRef}
         autoPlay
-        muted={isMuted}
+        muted
         loop
         playsInline
         preload="auto"
@@ -135,20 +100,6 @@ const HeroSection = () => {
       {/* Cinematic gradient overlays */}
       <div className="absolute inset-0 z-[1] bg-gradient-to-r from-black/85 via-black/45 to-black/55" />
       <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/45 via-transparent to-black/80" />
-
-      {soundLocked && (
-        <button
-          type="button"
-          onClick={enableSound}
-          aria-label="Enable intro sound"
-          className="absolute inset-0 z-50 flex cursor-pointer items-center justify-center bg-black/35 backdrop-blur-[1px] transition hover:bg-black/25"
-        >
-          <span className="inline-flex items-center gap-3 rounded-full border border-white/25 bg-black/55 px-6 py-3 text-xs font-medium uppercase tracking-[0.28em] text-white backdrop-blur-md sm:text-sm">
-            <VolumeX size={18} strokeWidth={2} />
-            Tap anywhere for sound
-          </span>
-        </button>
-      )}
 
       {/* Content layer */}
       <div className="relative z-10 flex h-full flex-col">
@@ -168,24 +119,13 @@ const HeroSection = () => {
               ))}
             </ul>
 
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={toggleSound}
-                aria-label={isMuted ? 'Unmute intro video' : 'Mute intro video'}
-                className="inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 p-2.5 text-white backdrop-blur-md transition hover:bg-white/20 hover:scale-[1.03]"
-              >
-                {isMuted ? <VolumeX size={16} strokeWidth={2} /> : <Volume2 size={16} strokeWidth={2} />}
-              </button>
-
-              <a
-                href={profile.resumeUrl}
-                download={profile.resumeFileName}
-                className="hidden sm:inline-flex items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-xs font-medium uppercase tracking-[0.2em] text-white backdrop-blur-md transition hover:bg-white/20 hover:scale-[1.03]"
-              >
-                Résumé
-              </a>
-            </div>
+            <a
+              href={profile.resumeUrl}
+              download={profile.resumeFileName}
+              className="hidden sm:inline-flex items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-xs font-medium uppercase tracking-[0.2em] text-white backdrop-blur-md transition hover:bg-white/20 hover:scale-[1.03]"
+            >
+              Résumé
+            </a>
           </div>
         </FadeIn>
 
@@ -247,7 +187,7 @@ const HeroSection = () => {
           </div>
         </div>
 
-        {/* Bottom bar: scroll indicator */}
+        {/* Bottom bar: scroll indicator + mute toggle */}
         <div className="flex items-end justify-between px-6 md:px-10 pb-7 sm:pb-10 md:pb-12">
           <FadeIn delay={1.3} y={20}>
             <a href="#summary" aria-label="Scroll to next section" className="group flex flex-col items-center gap-3">
@@ -262,6 +202,27 @@ const HeroSection = () => {
               </div>
             </a>
           </FadeIn>
+
+          <FadeIn delay={1.3} y={20}>
+            <div className="flex items-center gap-3">
+              {showSoundHint && (
+                <span
+                  className="hidden sm:inline text-[10px] font-medium uppercase tracking-[0.25em] text-white/80"
+                  style={{ animation: 'pulseFade 2s ease-in-out infinite' }}
+                >
+                  Tap for sound
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={toggleMute}
+                aria-label={muted ? 'Unmute intro video' : 'Mute intro video'}
+                className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-md transition hover:bg-white/20 hover:scale-110"
+              >
+                {muted ? <VolumeX size={18} strokeWidth={2} /> : <Volume2 size={18} strokeWidth={2} />}
+              </button>
+            </div>
+          </FadeIn>
         </div>
       </div>
 
@@ -269,6 +230,10 @@ const HeroSection = () => {
         @keyframes scrollLine {
           0% { transform: translateY(-100%); }
           100% { transform: translateY(200%); }
+        }
+        @keyframes pulseFade {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 1; }
         }
       `}</style>
     </section>
